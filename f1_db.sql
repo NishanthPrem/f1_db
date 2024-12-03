@@ -1,3 +1,12 @@
+/*
+** Author: Brijay Santosh Shetty, Nishanth Prem
+** Course: IFT/530
+** SQL Server Version: Microsoft SQL Server 2012 (SP1) 
+** History
+** Date Created		Comments
+** 10/23/2024		Final Project
+*/
+
 USE f1;
 
 -- 1. Teams Table
@@ -229,18 +238,38 @@ CREATE TABLE DriverStandings (
 
 GO;
 
--- Trigger not working
-
 CREATE TRIGGER trg_UpdateDriverStandings
 ON RaceResults
 AFTER INSERT, UPDATE
 AS
 BEGIN
-    UPDATE DriverStandings
-    SET Points = (SELECT SUM(Points) FROM RaceResults WHERE RaceResults.DriverID = DriverStandings.DriverID),
-        Position = RANK() OVER (ORDER BY Points DESC)
-    WHERE DriverID IN (SELECT DISTINCT DriverID FROM INSERTED);
+    -- Temporary table to calculate Points and Rank
+    WITH DriverPoints AS (
+        SELECT
+            DriverID,
+            SUM(Points) AS TotalPoints
+        FROM RaceResults
+        GROUP BY DriverID
+    ),
+    DriverRank AS (
+        SELECT
+            DriverID,
+            TotalPoints,
+            RANK() OVER (ORDER BY TotalPoints DESC) AS RankPosition
+        FROM DriverPoints
+    )
+    -- Update DriverStandings table
+    UPDATE DS
+    SET 
+        DS.Points = DR.TotalPoints,
+        DS.Position = DR.RankPosition
+    FROM DriverStandings DS
+    INNER JOIN DriverRank DR
+    ON DS.DriverID = DR.DriverID
+    WHERE DS.DriverID IN (SELECT DISTINCT DriverID FROM INSERTED);
 END;
+
+SELECT * FROM DriverStandings;
 
 INSERT INTO DriverStandings (DriverID, SeasonYear, Points, Position)
 VALUES
@@ -318,6 +347,7 @@ VALUES
 
 SELECT * FROM SeasonStandings;
 
+GO;
 -- Convert 3 queries and convert to view
 
 -- Query to retrieve driver results filtered by race and position
@@ -403,3 +433,9 @@ END;
 
 CLOSE DriverCursor;
 DEALLOCATE DriverCursor;
+
+SELECT 
+    D.DriverID,
+    D.DriverName,
+    dbo.GetDriverTotalPoints(D.DriverID) AS TotalPoints
+FROM Drivers D;
