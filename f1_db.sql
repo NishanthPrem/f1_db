@@ -6,10 +6,11 @@ CREATE TABLE Teams (
     TeamName VARCHAR(100) NOT NULL,
     BaseCountry VARCHAR(100),
     FoundedYear INT,
+	Points INT,
     PrincipalName VARCHAR(100)
 );
 
--- Insert into teams table
+-- Insert into Teams table
 
 INSERT INTO Teams (TeamName, BaseCountry, FoundedYear, PrincipalName)
 VALUES
@@ -37,7 +38,23 @@ CREATE TABLE Drivers (
     FOREIGN KEY (TeamID) REFERENCES Teams(TeamID) ON DELETE CASCADE
 );
 
--- Insert into drivers table
+
+-- Creating an DriversAudit Table
+
+CREATE TABLE DriversAudit (
+    AuditID INT IDENTITY(1,1) PRIMARY KEY,
+    DriverID INT,
+    DriverName NVARCHAR(100),
+    Age INT,
+    Nationality NVARCHAR(100),
+    TeamID INT,
+    Points INT,
+    ActionType NVARCHAR(10), -- 'INSERT', 'UPDATE', 'DELETE'
+    ChangeDate DATETIME DEFAULT GETDATE()
+);
+
+
+-- Insert into Drivers table
 
 INSERT INTO Drivers (DriverName, Age, Nationality, TeamID, Points)
 VALUES
@@ -171,8 +188,8 @@ CREATE TABLE RaceResults (
     Position INT,
     Points INT,
     FOREIGN KEY (RaceID) REFERENCES Races(RaceID) ON DELETE CASCADE,
-    FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID) ON DELETE CASCADE,
-    FOREIGN KEY (ConstructorID) REFERENCES Constructors(ConstructorID) ON DELETE CASCADE
+    FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID) ON DELETE NO ACTION,
+    FOREIGN KEY (ConstructorID) REFERENCES Constructors(ConstructorID) ON DELETE NO ACTION
 );
 
 INSERT INTO RaceResults (RaceID, DriverID, ConstructorID, Position, Points)
@@ -198,6 +215,7 @@ VALUES
     (1, 19, 10, 19, 0),
     (1, 20, 10, 20, 0);
 
+SELECT * FROM RaceResults;
 
 -- 7. Driver Standing
 CREATE TABLE DriverStandings (
@@ -208,6 +226,21 @@ CREATE TABLE DriverStandings (
     Position INT, -- Rank in the standings
     FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID) ON DELETE CASCADE
 );
+
+GO;
+
+-- Trigger not working
+
+CREATE TRIGGER trg_UpdateDriverStandings
+ON RaceResults
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    UPDATE DriverStandings
+    SET Points = (SELECT SUM(Points) FROM RaceResults WHERE RaceResults.DriverID = DriverStandings.DriverID),
+        Position = RANK() OVER (ORDER BY Points DESC)
+    WHERE DriverID IN (SELECT DISTINCT DriverID FROM INSERTED);
+END;
 
 INSERT INTO DriverStandings (DriverID, SeasonYear, Points, Position)
 VALUES
@@ -245,6 +278,21 @@ CREATE TABLE SeasonStandings (
     FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID) ON DELETE CASCADE
 );
 
+GO;
+
+CREATE TRIGGER trg_UpdateSeasonStandings
+ON DriverStandings
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    UPDATE SeasonStandings
+    SET Points = DS.Points,
+        Rank = DS.Position
+    FROM SeasonStandings SS
+    INNER JOIN DriverStandings DS ON SS.DriverID = DS.DriverID
+    WHERE DS.DriverID IN (SELECT DISTINCT DriverID FROM INSERTED);
+END;
+
 INSERT INTO SeasonStandings (SeasonYear, DriverID, Points, Rank)
 VALUES
     (2024, 1, 440, 1),  -- Max Verstappen
@@ -269,3 +317,89 @@ VALUES
     (2024, 20, 15, 20);  -- Logan Sargeant
 
 SELECT * FROM SeasonStandings;
+
+-- Convert 3 queries and convert to view
+
+-- Query to retrieve driver results filtered by race and position
+CREATE VIEW DriverRaceResults AS
+SELECT 
+    r.RaceName,
+    d.DriverName,
+    rr.Position,
+    rr.Points
+FROM 
+    RaceResults rr
+JOIN 
+    Races r ON rr.RaceID = r.RaceID
+JOIN 
+    Drivers d ON rr.DriverID = d.DriverID
+WHERE 
+    rr.Position <= 3;  -- Example filter for top 3 positions
+
+GO;
+
+
+-- Creating a Stored Procedure 
+
+CREATE PROCEDURE GetRaceResults
+    @RaceID INT
+AS
+BEGIN
+    SELECT 
+        rr.Position, 
+        d.DriverName, 
+        c.ConstructorName, 
+        rr.Points
+    FROM 
+        RaceResults rr
+    JOIN 
+        Drivers d ON rr.DriverID = d.DriverID
+    JOIN 
+        Constructors c ON rr.ConstructorID = c.ConstructorID
+    WHERE 
+        rr.RaceID = @RaceID;
+END;
+
+EXEC GetRaceResults @RaceID = 1;
+
+GO;
+
+-- Creating a UDF(User Defined Function) 
+
+CREATE FUNCTION GetDriverTotalPoints (@DriverID INT)
+RETURNS INT
+AS
+BEGIN
+    DECLARE @TotalPoints INT;
+    SELECT @TotalPoints = SUM(Points)
+    FROM RaceResults
+    WHERE DriverID = @DriverID;
+    RETURN @TotalPoints;
+END;
+
+GO;
+
+-- Use the function
+SELECT dbo.GetDriverTotalPoints(1) AS TotalPoints;
+
+
+-- Demonstrating how Cursor can be used here
+
+DECLARE @DriverID INT, @DriverName NVARCHAR(100), @TotalPoints INT;
+
+DECLARE DriverCursor CURSOR FOR
+SELECT DriverID, DriverName FROM Drivers;
+
+OPEN DriverCursor;
+FETCH NEXT FROM DriverCursor INTO @DriverID, @DriverName;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    SET @TotalPoints = dbo.GetDriverTotalPoints(@DriverID);
+    PRINT 'Driver: ' + @DriverName + ', Total Points: ' + CAST(@TotalPoints AS NVARCHAR);
+
+    FETCH NEXT FROM DriverCursor INTO @DriverID, @DriverName;
+END;
+
+CLOSE DriverCursor;
+DEALLOCATE DriverCursor;
