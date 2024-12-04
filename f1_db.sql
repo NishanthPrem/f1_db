@@ -7,7 +7,9 @@
 ** 10/23/2024		Final Project
 */
 
-USE f1;
+CREATE DATABASE group_68;
+
+USE group_68;
 
 -- 1. Teams Table
 CREATE TABLE Teams (
