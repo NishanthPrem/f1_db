@@ -1,10 +1,10 @@
-/*
+﻿/*
 ** Author: Brijay Santosh Shetty, Nishanth Prem
 ** Course: IFT/530
 ** SQL Server Version: Microsoft SQL Server 2012 (SP1) 
 ** History
 ** Date Created		Comments
-** 10/23/2024		Final Project
+** 12/6/2024		Final Project
 */
 
 CREATE DATABASE group_68;
@@ -271,8 +271,6 @@ BEGIN
     WHERE DS.DriverID IN (SELECT DISTINCT DriverID FROM INSERTED);
 END;
 
-SELECT * FROM DriverStandings;
-
 INSERT INTO DriverStandings (DriverID, SeasonYear, Points, Position)
 VALUES
     (1, 2024, 440, 1),  -- Max Verstappen
@@ -296,6 +294,7 @@ VALUES
     (19, 2024, 50, 19),  -- Alex Albon
     (20, 2024, 15, 20);  -- Logan Sargeant
 
+SELECT * FROM DriverStandings;
 
 SELECT * FROM Drivers;
 
@@ -370,6 +369,8 @@ WHERE
 
 GO;
 
+-- Test Query for the DriverRaceResults view
+SELECT * FROM DriverRaceResults;
 
 -- Creating a Stored Procedure 
 
@@ -395,6 +396,10 @@ END;
 EXEC GetRaceResults @RaceID = 1;
 
 GO;
+
+SELECT name, object_id 
+FROM sys.procedures
+WHERE name = 'GetRaceResults';
 
 -- Creating a UDF(User Defined Function) 
 
